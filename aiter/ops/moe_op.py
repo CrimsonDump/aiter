@@ -254,7 +254,8 @@ def cmdGenFunc_ck_moe_stage2(
     }
 
 
-@compile_ops("module_moe_ck2stages", gen_func=cmdGenFunc_ck_moe_stage)
+# @compile_ops("module_moe_ck2stages", gen_func=cmdGenFunc_ck_moe_stage)
+@compile_ops("module_moe_ck2stages")
 def ck_moe_stage1(
     hidden_states: Tensor,
     w1: Tensor,
@@ -274,7 +275,8 @@ def ck_moe_stage1(
 ) -> None: ...
 
 
-@compile_ops("module_moe_ck2stages", gen_func=cmdGenFunc_ck_moe_stage2)
+# @compile_ops("module_moe_ck2stages", gen_func=cmdGenFunc_ck_moe_stage2)
+@compile_ops("module_moe_ck2stages")
 def ck_moe_stage2(
     inter_states: Tensor,
     w1: Tensor,

@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2024-2025, Advanced Micro Devices, Inc. All rights reserved.
+import pudb
+import os
+from pathlib import Path
 
 import torch
 import itertools
@@ -147,7 +150,25 @@ def test_fmoe(
     w2 = torch.randn((E, model_dim, inter_dim), dtype=dtype)
 
     score = torch.randn((token, E), dtype=dtype)
+    inputs_path = os.environ.get("LOAD_INPUTS", None)
+    if inputs_path:
+        inputs_path = Path(inputs_path)
+        assert use_g1u1
+        input = torch.load(inputs_path / 'input.pt', weights_only=True).cuda()
+        w1_gate = torch.load(inputs_path / 'w1_gate.pt', weights_only=True).cuda()
+        w1_up = torch.load(inputs_path / 'w1_up.pt', weights_only=True).cuda()
+        w2 = torch.load(inputs_path / 'w2.pt', weights_only=True).cuda()
+        score = torch.load(inputs_path / 'score.pt', weights_only=True)
+        w1 = torch.cat((w1_gate, w1_up), dim=1)
+        print(f"Load from {inputs_path.as_posix()}")
     topk_weights, topk_ids = fused_topk(input, score, topk, True)
+
+    torch_outputs = os.environ.get('TORCH_OUTPUTS')
+    if torch_outputs:
+        torch_outputs = Path(torch_outputs)
+        assert torch_outputs.is_dir()
+        torch.save(topk_weights, torch_outputs / 'topk_weights.pt')
+        torch.save(topk_ids, torch_outputs / 'topk_ids.pt')
 
     M, _ = topk_ids.shape
 
@@ -232,6 +253,19 @@ def test_fmoe(
         w1_scale=w1_scale,
         doweight=doweight_stage1,
     )
+
+    torch_outputs = os.environ.get('TORCH_OUTPUTS')
+    if torch_outputs:
+        torch_outputs = Path(torch_outputs)
+        assert torch_outputs.is_dir()
+        torch.save(topk_weights, torch_outputs / 'topk_weights.pt')
+        torch.save(topk_ids, torch_outputs / 'topk_ids.pt')
+        torch.save(a1_qt, torch_outputs / 'a_q.pt')
+        torch.save(w1_qt, torch_outputs / 'w1_q.pt')
+        torch.save(w2_qt, torch_outputs / 'w2_q.pt')
+        torch.save(a1_scale, torch_outputs / 'a_scale.pt')
+        torch.save(w1_scale, torch_outputs / 'w1_scale.pt')
+        torch.save(out1_ref, torch_outputs / 'out1_ref.pt')
 
     if WQDType == torch.int4:  # int4 w quant
         w1_qt_aiter = rearrange_4bit_elements(
@@ -328,6 +362,15 @@ def test_fmoe(
         a2_scale=a2_scale,
         doweight=not doweight_stage1,
     )
+
+    torch_outputs = os.environ.get('TORCH_OUTPUTS')
+    if torch_outputs:
+        torch_outputs = Path(torch_outputs)
+        assert torch_outputs.is_dir()
+        torch.save(a2_qt, torch_outputs / 'a2_q.pt')
+        torch.save(w2_scale, torch_outputs / 'w2_scale.pt')
+        torch.save(a2_scale, torch_outputs / 'a2_scale.pt')
+        torch.save(out2_ref, torch_outputs / 'torch_out.pt')
     # # out_ref = torch_moe(
     # #     input,
     # #     w1_qt,
