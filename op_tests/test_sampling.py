@@ -31,7 +31,10 @@ def test_top_p_sampling(batch_size, vocab_size, p):
 
     num_trials = 1000
     for _ in range(num_trials):
-        samples = torch.ops.aiter.top_p_sampling_from_probs(
+        # samples = torch.ops.aiter.top_p_sampling_from_probs(
+        #     normalized_prob, None, *_to_tensor_scalar_tuple(p), deterministic=True
+        # )
+        samples = aiter.top_p_sampling_from_probs_1(
             normalized_prob, None, *_to_tensor_scalar_tuple(p), deterministic=True
         )
         assert torch.all(samples < vocab_size) and torch.all(samples >= 0)
@@ -113,6 +116,6 @@ def test_top_k_top_p_joint_sampling_from_probs(batch_size, vocab_size, p, k):
 
 
 if __name__ == "__main__":
-    test_top_k_top_p_joint_sampling_from_probs(40, 129280, 0.6, 20)
+    # test_top_k_top_p_joint_sampling_from_probs(40, 129280, 0.6, 20)
     # test_top_k_renorm_probs(1, 129280, 10)
-    # test_top_p_sampling(1, 129280, 0.1)
+    test_top_p_sampling(45, 151936, 0.95)

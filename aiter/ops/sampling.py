@@ -15,6 +15,14 @@ from csrc.cpp_itfs.sampling.top_k_top_p_sampling_from_probs import (
 )
 from csrc.cpp_itfs.torch_utils import direct_register_custom_op
 
+@compile_ops("module_DPRS")
+def top_p_sampling_from_probs_1(
+    probs: torch.Tensor,
+    indices: torch.Tensor,
+    maybe_top_p_arr: Optional[torch.Tensor],
+    top_p_val: float,
+    deterministic: bool = False,
+) -> torch.Tensor: ...
 
 def top_k_renorm_probs(
     probs: torch.Tensor,

@@ -813,6 +813,33 @@ __global__ void TopKRenormProbKernel(
     }
 }
 
+template <typename T, typename IdType>
+cudaError_t TopPSamplingFromProb(T* probs, T* uniform_samples, IdType* output, bool* success,
+                                 T* top_p_arr, uint32_t batch_size, T top_p_val, uint32_t d,
+                                 uint32_t max_top_p_rounds, bool deterministic,
+                                 cudaStream_t stream = 0) {
+  constexpr uint32_t BLOCK_THREADS = 1024;
+  const uint32_t vec_size = std::gcd(16 / sizeof(T), d);
+
+  const uint32_t smem_size = sizeof(SamplingTempStorage<T, BLOCK_THREADS, SCAN_ALGO, REDUCE_ALGO>);
+  dim3 nblks(batch_size);
+  dim3 nthrs(BLOCK_THREADS);
+  IdType* row_indices_placeholder = nullptr;
+  void* args[] = {&probs,     &uniform_samples, &output, &success,         &row_indices_placeholder,
+                  &top_p_arr, &top_p_val,       &d,      &max_top_p_rounds};
+
+  DISPATCH_ALIGNED_VEC_SIZE(
+      vec_size, VEC_SIZE, {DISPATCH_DETERMINISTIC(deterministic, DETERMINISTIC, {
+        auto kernel = TopPSamplingFromProbKernel<BLOCK_THREADS, SCAN_ALGO, REDUCE_ALGO, VEC_SIZE,
+                                                 DETERMINISTIC, T, IdType>;
+        FLASHINFER_CUDA_CALL(
+            cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+        FLASHINFER_CUDA_CALL(
+            cudaLaunchKernel((void*)kernel, nblks, nthrs, args, smem_size, stream));
+      })});
+  return cudaSuccess;
+}
+
 } // namespace sampling
 
 } // namespace aiter
