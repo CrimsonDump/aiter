@@ -3,6 +3,7 @@
 
 import pytest
 import torch
+import numpy as np
 
 from aiter.ops import sampling  # noqa: F401
 
@@ -30,15 +31,26 @@ def test_top_p_sampling(batch_size, vocab_size, p):
     mask.scatter_add_(1, indices, (cdf > (1 - p) - eps).int())
 
     num_trials = 1000
-    for _ in range(num_trials):
-        # samples = torch.ops.aiter.top_p_sampling_from_probs(
-        #     normalized_prob, None, *_to_tensor_scalar_tuple(p), deterministic=True
-        # )
+
+    durs = []
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+
+    for i in range(num_trials):
+        torch.cuda.synchronize()
+        start_event.record()
         samples = aiter.top_p_sampling_from_probs_1(
             normalized_prob, None, *_to_tensor_scalar_tuple(p), deterministic=True
         )
+        end_event.record()
+        torch.cuda.synchronize()
+        elapsed_time = start_event.elapsed_time(end_event)
+        if i > 100:
+            durs.append(elapsed_time)
         assert torch.all(samples < vocab_size) and torch.all(samples >= 0)
         assert torch.all(mask[torch.arange(batch_size), samples] == 1)
+    print(durs[:10])
+    print(np.mean(durs))
 
 
 @pytest.mark.parametrize("batch_size", [1, 19, 99, 989])
@@ -119,3 +131,5 @@ if __name__ == "__main__":
     # test_top_k_top_p_joint_sampling_from_probs(40, 129280, 0.6, 20)
     # test_top_k_renorm_probs(1, 129280, 10)
     test_top_p_sampling(45, 151936, 0.95)
+    # test_top_p_sampling(80, 152064, 0.95)
+    # test_top_p_sampling(10, 152064, 0.95)
