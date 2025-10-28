@@ -15,6 +15,8 @@ from csrc.cpp_itfs.sampling.top_k_top_p_sampling_from_probs import (
 )
 from csrc.cpp_itfs.torch_utils import direct_register_custom_op
 
+from ..jit.core import compile_ops
+
 @compile_ops("module_DPRS")
 def top_p_sampling_from_probs_1(
     probs: torch.Tensor,

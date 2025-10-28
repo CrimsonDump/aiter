@@ -5,6 +5,7 @@ import pytest
 import torch
 import numpy as np
 
+import aiter
 from aiter.ops import sampling  # noqa: F401
 
 torch.set_default_device("cuda")

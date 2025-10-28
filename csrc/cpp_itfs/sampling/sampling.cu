@@ -1,25 +1,23 @@
+#include "sampling.cuh"
 
-void top_p_sampling_from_probs(at::Tensor probs, at::Tensor uniform_samples, at::Tensor samples,
-                               at::Tensor success, std::optional<at::Tensor> maybe_top_p_arr,
-                               double top_p_val, bool deterministic, int64_t cuda_stream) {
-  CHECK_INPUT(probs);
-  CHECK_INPUT(uniform_samples);
-  auto device = probs.device();
-  CHECK_EQ(uniform_samples.device(), device);
-  CHECK_DIM(2, probs);            // probs: (batch_size, vocab_size)
-  CHECK_DIM(2, uniform_samples);  // uniform_samples: (max_top_p_rounds, batch_size)
-  CHECK_EQ(probs.size(0), uniform_samples.size(1));
-  unsigned int batch_size = probs.size(0);
-  unsigned int vocab_size = probs.size(1);
-  unsigned int max_top_p_rounds = uniform_samples.size(0);
+namespace aiter {
+void top_p_sampling_from_probs(torch::Tensor probs, torch::Tensor output,
+                               Optional<torch::Tensor> maybe_indices,
+                               Optional<torch::Tensor> maybe_top_p_arr, double top_p_val,
+                               bool deterministic, uint64_t philox_seed, uint64_t philox_offset) {
+//   CHECK_INPUT(probs);
+//   CHECK_DIM(2, probs);  // probs: (batch_size, vocab_size)
+  unsigned int batch_size = output.sizes()[0];
+  unsigned int vocab_size = probs.sizes()[1];
   bool has_top_p_arr = maybe_top_p_arr.has_value();
 
-  cudaStream_t stream = reinterpret_cast<cudaStream_t>(cuda_stream);
+  cudaSetDevice(probs->device.device_id);
+//   auto stream = get_stream(probs->device);
   cudaError_t status = sampling::TopPSamplingFromProb<float, int>(
-      static_cast<float*>(probs.data_ptr()), static_cast<float*>(uniform_samples.data_ptr()),
-      static_cast<int*>(samples.data_ptr()), static_cast<bool*>(success.data_ptr()),
-      has_top_p_arr ? static_cast<float*>(maybe_top_p_arr->data_ptr()) : nullptr, batch_size,
-      top_p_val, vocab_size, max_top_p_rounds, deterministic, stream);
-  TORCH_CHECK(status == cudaSuccess, "TopPSamplingFromProbs failed with error code " +
-                                         std::string(cudaGetErrorString(status)));
+      static_cast<float*>(probs.data_ptr()), static_cast<int*>(output.data_ptr()),
+      maybe_indices.has_value() ? static_cast<int*>(maybe_indices.value().data_ptr()) : nullptr,
+      has_top_p_arr ? static_cast<float*>(maybe_top_p_arr.value().data_ptr()) : nullptr, batch_size,
+      top_p_val, vocab_size, deterministic, philox_seed, philox_offset, /*stream*/0);
+  TORCH_CHECK(status == cudaSuccess, "TopPSamplingFromProbs failed with error code " + cudaGetErrorString(status));
+}
 }

@@ -813,31 +813,68 @@ __global__ void TopKRenormProbKernel(
     }
 }
 
+#define DISPATCH_ALIGNED_VEC_SIZE(aligned_vec_size, ALIGNED_VEC_SIZE, ...) \
+  switch (aligned_vec_size) {                                              \
+    case 16: {                                                             \
+      constexpr size_t ALIGNED_VEC_SIZE = 16;                              \
+      __VA_ARGS__                                                          \
+      break;                                                               \
+    }                                                                      \
+    case 8: {                                                              \
+      constexpr size_t ALIGNED_VEC_SIZE = 8;                               \
+      __VA_ARGS__                                                          \
+      break;                                                               \
+    }                                                                      \
+    case 4: {                                                              \
+      constexpr size_t ALIGNED_VEC_SIZE = 4;                               \
+      __VA_ARGS__                                                          \
+      break;                                                               \
+    }                                                                      \
+    case 2: {                                                              \
+      constexpr size_t ALIGNED_VEC_SIZE = 2;                               \
+      __VA_ARGS__                                                          \
+      break;                                                               \
+    }                                                                      \
+    case 1: {                                                              \
+      constexpr size_t ALIGNED_VEC_SIZE = 1;                               \
+      __VA_ARGS__                                                          \
+      break;                                                               \
+    }                                                                      \
+    default: {                                                             \
+      std::ostringstream err_msg;                                          \
+      err_msg << "Unsupported aligned_vec_size: " << aligned_vec_size;     \
+      throw std::runtime_error(err_msg.str());
+    }                                                                      \
+  }
+#define DISPATCH_DETERMINISTIC(deterministic, DETERMINISTIC, ...) \
+  if (deterministic) {                                            \
+    constexpr bool DETERMINISTIC = true;                          \
+    __VA_ARGS__                                                   \
+  } else {                                                        \
+    constexpr bool DETERMINISTIC = false;                         \
+    __VA_ARGS__                                                   \
+  }
+
 template <typename T, typename IdType>
-cudaError_t TopPSamplingFromProb(T* probs, T* uniform_samples, IdType* output, bool* success,
-                                 T* top_p_arr, uint32_t batch_size, T top_p_val, uint32_t d,
-                                 uint32_t max_top_p_rounds, bool deterministic,
-                                 cudaStream_t stream = 0) {
-  constexpr uint32_t BLOCK_THREADS = 1024;
+hipError_t TopPSamplingFromProb(T* probs, IdType* output, IdType* indices, T* top_p_arr,
+                                 uint32_t batch_size, T top_p_val, uint32_t d, bool deterministic,
+                                 uint64_t philox_seed, uint64_t philox_offset,
+                                 hipStream_t stream = 0) {
   const uint32_t vec_size = std::gcd(16 / sizeof(T), d);
 
-  const uint32_t smem_size = sizeof(SamplingTempStorage<T, BLOCK_THREADS, SCAN_ALGO, REDUCE_ALGO>);
-  dim3 nblks(batch_size);
-  dim3 nthrs(BLOCK_THREADS);
-  IdType* row_indices_placeholder = nullptr;
-  void* args[] = {&probs,     &uniform_samples, &output, &success,         &row_indices_placeholder,
-                  &top_p_arr, &top_p_val,       &d,      &max_top_p_rounds};
+    const uint32_t smem_size = sizeof(SamplingTempStorage<aiter::sampling::BLOCK_THREADS, aiter::sampling::SCAN_ALGO, REDUCE_ALGO>);
+    dim3 nblks(batch_size);
+    dim3 nthrs(aiter::sampling::BLOCK_THREADS);
 
-  DISPATCH_ALIGNED_VEC_SIZE(
-      vec_size, VEC_SIZE, {DISPATCH_DETERMINISTIC(deterministic, DETERMINISTIC, {
-        auto kernel = TopPSamplingFromProbKernel<BLOCK_THREADS, SCAN_ALGO, REDUCE_ALGO, VEC_SIZE,
-                                                 DETERMINISTIC, T, IdType>;
-        FLASHINFER_CUDA_CALL(
-            cudaFuncSetAttribute(kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-        FLASHINFER_CUDA_CALL(
-            cudaLaunchKernel((void*)kernel, nblks, nthrs, args, smem_size, stream));
-      })});
-  return cudaSuccess;
+    DISPATCH_ALIGNED_VEC_SIZE(
+        vec_size, VEC_SIZE, {DISPATCH_DETERMINISTIC(deterministic, DETERMINISTIC, {
+
+          auto kernel = TopPSamplingFromProbKernel<aiter::sampling::BLOCK_THREADS, aiter::sampling::SCAN_ALGO, REDUCE_ALGO, VEC_SIZE,
+                                                   DETERMINISTIC, T, IdType>;
+    hipFuncSetAttribute(reinterpret_cast<const void*>(kernel), hipFuncAttributeMaxDynamicSharedMemorySize, smem_size);
+    kernel<<<nblks, nthrs, smem_size, reinterpret_cast<hipStream_t>(stream)>>>(reinterpret_cast<float*>(probs), reinterpret_cast<int*>(output), reinterpret_cast<int*>(indices), reinterpret_cast<float*>(top_p_arr), top_p_val, d, static_cast<uint64_t>(philox_seed), static_cast<uint64_t>(philox_offset));
+        })});
+    return hipSuccess;
 }
 
 } // namespace sampling
